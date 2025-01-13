@@ -20,7 +20,11 @@
 
 Acore::Crypto::ARC4::ARC4() : _ctx(EVP_CIPHER_CTX_new())
 {
+#ifdef __OpenBSD__
+    _cipher = (EVP_CIPHER *) EVP_aes_128_gcm();
+#else
     _cipher = EVP_CIPHER_fetch(nullptr, "RC4", nullptr);
+#endif
 
     EVP_CIPHER_CTX_init(_ctx);
     int result = EVP_EncryptInit_ex(_ctx, _cipher, nullptr, nullptr, nullptr);
@@ -30,7 +34,9 @@ Acore::Crypto::ARC4::ARC4() : _ctx(EVP_CIPHER_CTX_new())
 Acore::Crypto::ARC4::~ARC4()
 {
     EVP_CIPHER_CTX_free(_ctx);
+#ifndef __OpenBSD__
     EVP_CIPHER_free(_cipher);
+#endif
 }
 
 void Acore::Crypto::ARC4::Init(uint8 const* seed, std::size_t len)

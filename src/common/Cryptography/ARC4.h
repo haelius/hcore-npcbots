@@ -20,6 +20,7 @@
 
 #include "Define.h"
 #include <array>
+#undef OPENSSL_NO_AES
 #include <openssl/evp.h>
 
 namespace Acore::Crypto

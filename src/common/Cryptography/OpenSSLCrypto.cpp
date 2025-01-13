@@ -17,10 +17,12 @@
 
 #include "OpenSSLCrypto.h"
 #include <openssl/crypto.h> // NOTE: this import is NEEDED (even though some IDEs report it as unused)
+#ifndef __OpenBSD__
 #include <openssl/provider.h>
 
 OSSL_PROVIDER* LegacyProvider;
 OSSL_PROVIDER* DefaultProvider;
+#endif
 
 #if AC_PLATFORM == AC_PLATFORM_WINDOWS
 #include <boost/dll/runtime_symbol_info.hpp>
@@ -34,7 +36,9 @@ void SetupLibrariesForWindows()
     fs::path libLegacy{ boost::dll::program_location().remove_filename().string() + "/legacy.dll" };
 
     ASSERT(fs::exists(libLegacy), "Not found 'legacy.dll'. Please copy library 'legacy.dll' from OpenSSL default dir to '{}'", programLocation.generic_string());
+#ifndef __OpenBSD__
     OSSL_PROVIDER_set_default_search_path(nullptr, programLocation.generic_string().c_str());
+#endif
 }
 #endif
 
@@ -43,13 +47,17 @@ void OpenSSLCrypto::threadsSetup()
 #if AC_PLATFORM == AC_PLATFORM_WINDOWS
     SetupLibrariesForWindows();
 #endif
+#ifndef __OpenBSD__
     LegacyProvider = OSSL_PROVIDER_load(nullptr, "legacy");
     DefaultProvider = OSSL_PROVIDER_load(nullptr, "default");
+#endif
 }
 
 void OpenSSLCrypto::threadsCleanup()
 {
+#ifndef __OpenBSD__
     OSSL_PROVIDER_unload(LegacyProvider);
     OSSL_PROVIDER_unload(DefaultProvider);
     OSSL_PROVIDER_set_default_search_path(nullptr, nullptr);
+#endif
 }
