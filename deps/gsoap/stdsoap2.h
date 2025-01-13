@@ -539,7 +539,9 @@ extern intmax_t __strtoull(const char*, char**, int);
 #  define HAVE_STRTOULL
 #  define HAVE_GETTIMEOFDAY
 #  define HAVE_RAND_R
-#  define HAVE_GETHOSTBYNAME_R
+#  if !defined(__OpenBSD__)
+#   define HAVE_GETHOSTBYNAME_R
+#  endif
 #  define HAVE_GMTIME_R
 #  define HAVE_ASCTIME_R
 #  define HAVE_LOCALTIME_R
