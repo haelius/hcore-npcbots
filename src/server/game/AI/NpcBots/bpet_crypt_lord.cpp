@@ -100,9 +100,9 @@ public:
         {
         }
 
-        void DamageDealt(Unit* victim, uint32& damage, DamageEffectType damageType) override
+        void DamageDealt(Unit* victim, uint32& damage, DamageEffectType damageType, SpellSchoolMask damageSchoolMask) override
         {
-            bot_pet_ai::DamageDealt(victim, damage, damageType);
+            bot_pet_ai::DamageDealt(victim, damage, damageType, damageSchoolMask);
         }
 
         void DamageTaken(Unit* u, uint32& /*damage*/, DamageEffectType /*damageType*/, SpellSchoolMask /*schoolMask*/) override
@@ -208,7 +208,7 @@ public:
                         float dist = CONTACT_DISTANCE + me->GetCombatReach() * frand(1.0f, 3.0f);
                         float angle = frand(0.001f, float(M_PI * 2));
                         Position nearpos = u->GetNearPosition(dist, angle);
-                        me->GetMotionMaster()->MovePoint(1, nearpos, false);
+                        me->GetMotionMaster()->MovePoint(1, nearpos, FORCED_MOVEMENT_NONE, 0.0f, false);
                     }
                     return;
                 }
@@ -236,7 +236,7 @@ public:
                     if (expired)
                     {
                         canUpdate = false;
-                        me->ToTempSummon()->UnSummon(1);
+                        me->ToTempSummon()->UnSummon(1ms);
                         return;
                     }
                 }
@@ -251,7 +251,7 @@ public:
                 {
                     Bcore::AnyUnfriendlyUnitInObjectRangeCheck check(petOwner, petOwner, LOCUST_SWARM_EFFECTIVE_RADIUS);
                     Bcore::UnitListSearcher searcher(petOwner, targets, check);
-                    Cell::VisitAllObjects(petOwner, searcher, LOCUST_SWARM_EFFECTIVE_RADIUS);
+                    Cell::VisitObjects(petOwner, searcher, LOCUST_SWARM_EFFECTIVE_RADIUS);
 
                     targets.remove_if([poguid = petOwner->GetGUID(), combat = petOwner->IsInCombat(), max_attackers = _attackers](Unit const* unit) {
                         Unit::AttackerSet const& attackers = unit->getAttackers();
@@ -281,7 +281,7 @@ public:
                     float dist = (expired || is_full) ? 0.0f : frand(3.0f, 20.0f);
                     float angle = frand(0.001f, float(M_PI * 2));
                     Position nearpos = petOwner->GetNearPosition(dist, angle);
-                    me->GetMotionMaster()->MovePoint(1, nearpos, false);
+                    me->GetMotionMaster()->MovePoint(1, nearpos, FORCED_MOVEMENT_NONE, 0.0f, false);
                 }
             }
         }
@@ -295,11 +295,11 @@ public:
             OnSpellHit(caster, spell);
         }
 
-        void DamageDealt(Unit* victim, uint32& damage, DamageEffectType damageType) override
+        void DamageDealt(Unit* victim, uint32& damage, DamageEffectType damageType, SpellSchoolMask damageSchoolMask) override
         {
             _gathered = std::min<uint32>(_gathered + CalculatePct(damage, 75.0f), _capacity);
 
-            bot_pet_ai::DamageDealt(victim, damage, damageType);
+            bot_pet_ai::DamageDealt(victim, damage, damageType, damageSchoolMask);
         }
 
         uint32 GetData(uint32 data) const override

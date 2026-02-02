@@ -37,10 +37,7 @@ enum SpellbreakerSpecial
     ENERGY_SYPHON_ENERGIZE  = 27287 // Only for combat log spell message
 };
 
-static const uint32 Spellbreaker_spells_support_arr[] =
-{ SPELLSTEAL_1 };
-
-static const std::vector<uint32> Spellbreaker_spells_support(FROM_ARRAY(Spellbreaker_spells_support_arr));
+static const std::vector<uint32> Spellbreaker_spells_support{ SPELLSTEAL_1 };
 
 class spellbreaker_bot : public CreatureScript
 {
@@ -247,7 +244,7 @@ public:
             OnSpellHit(caster, spell);
         }
 
-        void DamageDealt(Unit* victim, uint32& damage, DamageEffectType damageType) override
+        void DamageDealt(Unit* victim, uint32& damage, DamageEffectType damageType, SpellSchoolMask damageSchoolMask) override
         {
             //Feedback
             if (damage && victim != me && damageType == DIRECT_DAMAGE)
@@ -274,7 +271,7 @@ public:
                 }
             }
 
-            bot_ai::DamageDealt(victim, damage, damageType);
+            bot_ai::DamageDealt(victim, damage, damageType, damageSchoolMask);
         }
 
         void DamageTaken(Unit* u, uint32& /*damage*/, DamageEffectType /*damageType*/, SpellSchoolMask /*schoolMask*/) override
@@ -348,7 +345,7 @@ public:
 
     private:
 
-        mutable bool _doCrit;
+        mutable bool _doCrit{};
 
         void ProcessSpellsteal(Unit* target)
         {

@@ -57,18 +57,9 @@ enum SeaWitchSpecial
 
 static constexpr size_t TORNADO_MIN_TARGETS = 4u;
 
-static const uint32 Seawitch_spells_damage_arr[] =
-{ FORKED_LIGHTNING_1, FROST_ARROW_1, TORNADO_1 };
-
-static const uint32 Seawitch_spells_cc_arr[] =
-{ FROST_ARROW_1, TORNADO_1 };
-
-static const uint32 Seawitch_spells_support_arr[] =
-{ MANA_SHIELD_1 };
-
-static const std::vector<uint32> Seawitch_spells_damage(FROM_ARRAY(Seawitch_spells_damage_arr));
-static const std::vector<uint32> Seawitch_spells_cc(FROM_ARRAY(Seawitch_spells_cc_arr));
-static const std::vector<uint32> Seawitch_spells_support(FROM_ARRAY(Seawitch_spells_support_arr));
+static const std::vector<uint32> Seawitch_spells_damage{ FORKED_LIGHTNING_1, FROST_ARROW_1, TORNADO_1 };
+static const std::vector<uint32> Seawitch_spells_cc{ FROST_ARROW_1, TORNADO_1 };
+static const std::vector<uint32> Seawitch_spells_support{ MANA_SHIELD_1 };
 
 class sea_witch_bot : public CreatureScript
 {
@@ -593,9 +584,9 @@ public:
             }
         }
 
-        void DamageDealt(Unit* victim, uint32& damage, DamageEffectType damageType) override
+        void DamageDealt(Unit* victim, uint32& damage, DamageEffectType damageType, SpellSchoolMask damageSchoolMask) override
         {
-            bot_ai::DamageDealt(victim, damage, damageType);
+            bot_ai::DamageDealt(victim, damage, damageType, damageSchoolMask);
         }
 
         void DamageTaken(Unit* u, uint32& damage, DamageEffectType /*damageType*/, SpellSchoolMask /*schoolMask*/) override
@@ -779,7 +770,7 @@ public:
         typedef std::set<Creature*> Summons;
         Summons _minions;
 
-        bool _spell_preact;
+        bool _spell_preact{};
 
         float _manaPerDamageMult() const
         {
@@ -793,7 +784,7 @@ public:
                 case 3: return 1.f /   2.50f;
                 case 2: return 1.f /   1.67f;
                 case 1: return 1.f /   1.25f;
-                default:return 1.f /   1.00f;
+                default:return         1.00f;
             }
         }
     };

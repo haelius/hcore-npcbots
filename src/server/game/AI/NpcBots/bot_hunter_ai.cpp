@@ -161,24 +161,18 @@ enum HunterSpecial
 };
 //talent tiers 20-32-44-56-68-80
 
-static const uint32 Hunter_spells_damage_arr[] =
+static const std::vector<uint32> Hunter_spells_damage
 { AIMED_SHOT_1, ARCANE_SHOT_1, BLACK_ARROW_1, COUNTERATTACK_1, CHIMERA_SHOT_1, EXPLOSIVE_SHOT_1, EXPLOSIVE_TRAP_1,
 IMMOLATION_TRAP_1, KILL_SHOT_1, MONGOOSE_BITE_1, MULTISHOT_1, RAPTOR_STRIKE_1, SCATTER_SHOT_1, SERPENT_STING_1,
 STEADY_SHOT_1, VOLLEY_1, WYVERN_STING_1 };
-
-static const uint32 Hunter_spells_cc_arr[] =
+static const std::vector<uint32> Hunter_spells_cc
 { CONCUSSIVE_SHOT_1, FREEZING_ARROW_1, FREEZING_TRAP_1, FROST_TRAP_1, SCARE_BEAST_1, SCATTER_SHOT_1,
 SILENCING_SHOT_1, WING_CLIP_1, WYVERN_STING_1 };
-
-static const uint32 Hunter_spells_support_arr[] =
+static const std::vector<uint32> Hunter_spells_support
 { /*ASPECT_OF_THE_BEAST_1, */ASPECT_OF_THE_MONKEY_1, ASPECT_OF_THE_HAWK_1, ASPECT_OF_THE_DRAGONHAWK_1,
 ASPECT_OF_THE_CHEETAH_1, ASPECT_OF_THE_PACK_1, ASPECT_OF_THE_VIPER_1, ASPECT_OF_THE_WILD_1,
 DETERRENCE_1, DISENGAGE_1, DISTRACTING_SHOT_1, FEIGN_DEATH_1, FLARE_1, HUNTERS_MARK_1, MEND_PET_1,
 MISDIRECTION_1, RAPID_FIRE_1, READINESS_1, SCORPID_STING_1, /*SNAKE_TRAP_1, */TRANQ_SHOT_1, VIPER_STING_1 };
-
-static const std::vector<uint32> Hunter_spells_damage(FROM_ARRAY(Hunter_spells_damage_arr));
-static const std::vector<uint32> Hunter_spells_cc(FROM_ARRAY(Hunter_spells_cc_arr));
-static const std::vector<uint32> Hunter_spells_support(FROM_ARRAY(Hunter_spells_support_arr));
 
 class hunter_bot : public CreatureScript
 {
@@ -615,16 +609,14 @@ public:
                 if (mtar && me->GetDistance(mtar) > 5 && me->GetDistance(mtar) < CalcSpellMaxRange(TRANQ_SHOT_1) &&
                     !mtar->IsImmunedToSpell(sSpellMgr->GetSpellInfo(TRANQ_SHOT_1)))
                 {
-                    AuraApplication const* aurApp;
-                    SpellInfo const* spellInfo;
                     Unit::AuraMap const& auras = mtar->GetOwnedAuras();
                     for (Unit::AuraMap::const_iterator itr = auras.begin(); itr != auras.end(); ++itr)
                     {
-                        spellInfo = itr->second->GetSpellInfo();
+                        SpellInfo const* spellInfo = itr->second->GetSpellInfo();
                         if (spellInfo->Dispel != DISPEL_MAGIC && spellInfo->Dispel != DISPEL_ENRAGE) continue;
                         if (spellInfo->Attributes & (SPELL_ATTR0_PASSIVE | SPELL_ATTR0_DO_NOT_DISPLAY)) continue;
                         //if (spellInfo->AttributesEx & SPELL_ATTR1_NO_AURA_ICON) continue;
-                        aurApp = itr->second->GetApplicationOfTarget(mtar->GetGUID());
+                        AuraApplication const* aurApp = itr->second->GetApplicationOfTarget(mtar->GetGUID());
                         if (aurApp && aurApp->IsPositive())
                         {
                             if (doCast(mtar, GetSpell(TRANQ_SHOT_1)))
@@ -960,7 +952,7 @@ public:
             {
                 uint32 STING = 0;
                 AuraEffect const* sting = nullptr;
-                if (!STING && GetSpell(SCORPID_STING_1) && mytar->GetTypeId() == TYPEID_UNIT &&
+                if (GetSpell(SCORPID_STING_1) && mytar->GetTypeId() == TYPEID_UNIT &&
                     mytar->ToCreature()->GetCreatureTemplate()->rank != CREATURE_ELITE_NORMAL)
                 {
                     sting = mytar->GetAuraEffect(SPELL_AURA_MOD_HIT_CHANCE, SPELLFAMILY_HUNTER, 0x8000, 0x0, 0x0);
@@ -1796,9 +1788,9 @@ public:
             }
         }
 
-        void DamageDealt(Unit* victim, uint32& damage, DamageEffectType damageType) override
+        void DamageDealt(Unit* victim, uint32& damage, DamageEffectType damageType, SpellSchoolMask damageSchoolMask) override
         {
-            bot_ai::DamageDealt(victim, damage, damageType);
+            bot_ai::DamageDealt(victim, damage, damageType, damageSchoolMask);
         }
 
         void DamageTaken(Unit* u, uint32& /*damage*/, DamageEffectType /*damageType*/, SpellSchoolMask /*schoolMask*/) override
@@ -2196,13 +2188,11 @@ public:
         {
             uint32 mask = 0;
 
-            uint32 baseId;
-            bool isAspect;
             Unit::AuraApplicationMap const& aurapps = me->GetAppliedAuras();
             for (Unit::AuraApplicationMap::const_iterator itr = aurapps.begin(); itr != aurapps.end(); ++itr)
             {
-                isAspect = true;
-                baseId = itr->second->GetBase()->GetSpellInfo()->GetFirstRankSpell()->Id;
+                bool isAspect = true;
+                uint32 baseId = itr->second->GetBase()->GetSpellInfo()->GetFirstRankSpell()->Id;
                 switch (baseId)
                 {
                     //case ASPECT_OF_THE_MONKEY_1:

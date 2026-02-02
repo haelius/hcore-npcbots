@@ -1,14 +1,14 @@
 /*
  * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
  *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms of the GNU Affero General Public License as published by the
- * Free Software Foundation; either version 3 of the License, or (at your
- * option) any later version.
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
  * more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -21,22 +21,10 @@
 #include "Vehicle.h"
 #include "eye_of_eternity.h"
 
-bool EoEDrakeEnterVehicleEvent::Execute(uint64 /*eventTime*/, uint32 /*updateTime*/)
-{
-    if (Player* p = ObjectAccessor::GetPlayer(_owner, _playerGUID))
-        if (p->IsInWorld() && !p->IsDuringRemoveFromWorld() && !p->isBeingLoaded() && p->FindMap() == _owner.FindMap())
-        {
-            p->CastCustomSpell(60683, SPELLVALUE_BASE_POINT0, 1, &_owner, true);
-            return true;
-        }
-    _owner.DespawnOrUnsummon(1);
-    return true;
-}
-
 class instance_eye_of_eternity : public InstanceMapScript
 {
 public:
-    instance_eye_of_eternity() : InstanceMapScript("instance_eye_of_eternity", 616) { }
+    instance_eye_of_eternity() : InstanceMapScript("instance_eye_of_eternity", MAP_THE_EYE_OF_ETERNITY) { }
 
     InstanceScript* GetInstanceScript(InstanceMap* pMap) const override
     {
@@ -68,7 +56,7 @@ public:
             return EncounterStatus == IN_PROGRESS;
         }
 
-        void OnPlayerEnter(Player* pPlayer) override
+        void OnPlayerEnter(Player* player) override
         {
             if (EncounterStatus == DONE)
             {
@@ -79,18 +67,12 @@ public:
                         go->SetPhaseMask(2, true);
 
                 // no floor, so put players on drakes
-                if (pPlayer)
+                if (player)
                 {
-                    if (!pPlayer->IsAlive())
+                    if (!player->IsAlive())
                         return;
 
-                    if (Creature* c = pPlayer->SummonCreature(NPC_WYRMREST_SKYTALON, pPlayer->GetPositionX(), pPlayer->GetPositionY(), pPlayer->GetPositionZ() - 20.0f, 0.0f, TEMPSUMMON_MANUAL_DESPAWN, 0))
-                    {
-                        c->SetCanFly(true);
-                        c->SetFaction(pPlayer->GetFaction());
-                        //pPlayer->CastCustomSpell(60683, SPELLVALUE_BASE_POINT0, 1, c, true);
-                        c->m_Events.AddEvent(new EoEDrakeEnterVehicleEvent(*c, pPlayer->GetGUID()), c->m_Events.CalculateTime(500));
-                    }
+                    player->CastSpell(player, SPELL_SUMMON_RED_DRAGON_BUDDY, true);
                 }
             }
         }

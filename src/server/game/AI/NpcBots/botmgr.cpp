@@ -54,6 +54,7 @@ static std::list<BotMgr::delayed_teleport_callback_type> delayed_bot_teleports;
 uint8 _basefollowdist;
 uint8 _maxClassNpcBots;
 uint8 _maxAccountNpcBots;
+uint8 _maxSharedOwners;
 uint8 _xpReductionAmount;
 uint8 _xpReductionStartingNumber;
 uint8 _mountLevel60;
@@ -84,6 +85,7 @@ uint32 _targetBGPlayersPerTeamCount_AB;
 uint32 _targetBGPlayersPerTeamCount_EY;
 uint32 _targetBGPlayersPerTeamCount_SA;
 uint32 _targetBGPlayersPerTeamCount_IC;
+uint32 _shared_ownership_options;
 bool _enableNpcBots;
 bool _logToDB;
 bool _xpReductionBlizzlikeEnable;
@@ -335,6 +337,8 @@ void BotMgr::LoadConfig(bool reload)
     _maxClassNpcBots                = sConfigMgr->GetIntDefault("NpcBot.MaxBotsPerClass", 1);
     _maxAccountNpcBots              = sConfigMgr->GetIntDefault("NpcBot.MaxBotsPerAccount", 0);
     _filterRaces                    = sConfigMgr->GetBoolDefault("NpcBot.Botgiver.FilterRaces", false);
+    _shared_ownership_options       = sConfigMgr->GetIntDefault("NpcBot.SharedOwnership.Options", 0);
+    _maxSharedOwners                = sConfigMgr->GetIntDefault("NpcBot.SharedOwnership.MaxOwners", 0);
     _basefollowdist                 = sConfigMgr->GetIntDefault("NpcBot.BaseFollowDistance", 30);
     _xpReductionAmount              = sConfigMgr->GetIntDefault("NpcBot.XpReduction.Amount", 0);
     _xpReductionStartingNumber      = sConfigMgr->GetIntDefault("NpcBot.XpReduction.StartingNumber", 2);
@@ -418,7 +422,7 @@ void BotMgr::LoadConfig(bool reload)
     _enableclass_mage               = sConfigMgr->GetBoolDefault("NpcBot.Classes.Mage.Enable", true);
     _enableclass_warlock            = sConfigMgr->GetBoolDefault("NpcBot.Classes.Warlock.Enable", true);
     _enableclass_druid              = sConfigMgr->GetBoolDefault("NpcBot.Classes.Druid.Enable", true);
-    _enableclass_blademaster        = false; // sConfigMgr->GetBoolDefault("NpcBot.Classes.Blademaster.Enable", false);
+    _enableclass_blademaster        = sConfigMgr->GetBoolDefault("NpcBot.Classes.Blademaster.Enable", false);
     _enableclass_sphynx             = sConfigMgr->GetBoolDefault("NpcBot.Classes.ObsidianDestroyer.Enable", true);
     _enableclass_archmage           = sConfigMgr->GetBoolDefault("NpcBot.Classes.Archmage.Enable", true);
     _enableclass_dreadlord          = sConfigMgr->GetBoolDefault("NpcBot.Classes.Dreadlord.Enable", true);
@@ -437,7 +441,7 @@ void BotMgr::LoadConfig(bool reload)
     _enableclass_wander_mage        = sConfigMgr->GetBoolDefault("NpcBot.WanderingBots.Classes.Mage.Enable", true);
     _enableclass_wander_warlock     = sConfigMgr->GetBoolDefault("NpcBot.WanderingBots.Classes.Warlock.Enable", true);
     _enableclass_wander_druid       = sConfigMgr->GetBoolDefault("NpcBot.WanderingBots.Classes.Druid.Enable", true);
-    _enableclass_wander_blademaster = false; // sConfigMgr->GetBoolDefault("NpcBot.WanderingBots.Classes.Blademaster.Enable", false);
+    _enableclass_wander_blademaster = sConfigMgr->GetBoolDefault("NpcBot.WanderingBots.Classes.Blademaster.Enable", false);
     _enableclass_wander_sphynx      = sConfigMgr->GetBoolDefault("NpcBot.WanderingBots.Classes.ObsidianDestroyer.Enable", true);
     _enableclass_wander_archmage    = sConfigMgr->GetBoolDefault("NpcBot.WanderingBots.Classes.Archmage.Enable", true);
     _enableclass_wander_dreadlord   = sConfigMgr->GetBoolDefault("NpcBot.WanderingBots.Classes.Dreadlord.Enable", true);
@@ -668,6 +672,13 @@ void BotMgr::LoadConfig(bool reload)
     RoundToInterval(_bothk_rate_honor, 0.1f, 10.f);
     RoundToInterval(_killrewardWandererItemCount, uint32(0), uint32(MAX_NR_LOOT_ITEMS));
     RoundToInterval(_killrewardWandererItemQuality, uint32(ITEM_QUALITY_POOR), uint32(ITEM_QUALITY_HEIRLOOM));
+    RoundToInterval(_maxSharedOwners, uint8(0), uint8(MAXRAIDSIZE - 1));
+
+    if ((_shared_ownership_options | SHARED_OWNER_OPTION_MASK_ALL) != SHARED_OWNER_OPTION_MASK_ALL)
+    {
+        BOT_LOG_ERROR("server.loading", "NpcBot.SharedOwnershipOptions contains unknown values outside of full mask {}! Disabled.", SHARED_OWNER_OPTION_MASK_ALL);
+        _shared_ownership_options = 0;
+    }
 }
 
 void BotMgr::ResolveConfigConflicts()
@@ -1011,6 +1022,10 @@ bool BotMgr::IsBotHKAchievementsEnabled()
 {
     return _bothk_achievements_enable;
 }
+bool BotMgr::IsSharedOwnerOptionEnabled(SharedOwnerOptionMask options)
+{
+    return std::ranges::all_of(std::array{ SHARED_OWNER_OPTION_MASK_ENABLE, options }, [=](uint32 mask) { return !!(_shared_ownership_options & mask); });
+}
 uint8 BotMgr::GetMaxClassBots()
 {
     return _maxClassNpcBots;
@@ -1018,6 +1033,10 @@ uint8 BotMgr::GetMaxClassBots()
 uint8 BotMgr::GetMaxAccountBots()
 {
     return _maxAccountNpcBots;
+}
+uint8 BotMgr::GetMaxSharedOwners()
+{
+    return _maxSharedOwners;
 }
 uint32 BotMgr::GetGearBankCapacity()
 {
@@ -1194,32 +1213,12 @@ bool BotMgr::IsWanderingWorldBot(Creature const* bot)
 
 void BotMgr::Update(uint32 diff)
 {
-    while (!_delayedRemoveList.empty())
-    {
-        decltype(_delayedRemoveList)::iterator itr = _delayedRemoveList.begin();
-        RemoveBot(itr->first, itr->second);
-    }
-
-    //remove temp bots from bot map before updating it
-    while (!_removeList.empty())
-    {
-        std::list<ObjectGuid>::iterator itr = _removeList.begin();
-
-        BotMap::iterator bitr = _bots.find(*itr);
-        ASSERT(bitr != _bots.end());
-        _bots.erase(bitr);
-
-        _removeList.erase(itr);
-    }
-
     _dpstracker->Update(diff);
 
     if (!HaveBot())
         return;
 
     //ObjectGuid guid;
-    Creature* bot;
-    bot_ai* ai;
     bool partyCombat = IsPartyInCombat(false);
     bool restrictBots = RestrictBots(_bots.begin()->second, false);
 
@@ -1232,8 +1231,8 @@ void BotMgr::Update(uint32 diff)
     for (BotMap::const_iterator itr = _bots.begin(); itr != _bots.end(); ++itr)
     {
         //guid = itr->first;
-        bot = itr->second;
-        ai = bot->GetBotAI();
+        Creature* bot = itr->second;
+        bot_ai* ai = bot->GetBotAI();
 
         if (ai->IAmFree())
             continue;
@@ -1277,6 +1276,12 @@ void BotMgr::Update(uint32 diff)
     }
 
     _update_lock = false;
+
+    while (!_delayedRemoveList.empty())
+    {
+        decltype(_delayedRemoveList)::iterator itr = _delayedRemoveList.begin();
+        RemoveBot(itr->first, itr->second);
+    }
 
     if (_quickrecall)
     {
@@ -1590,13 +1595,11 @@ void BotMgr::OnOwnerSetGameMaster(bool on)
 void BotMgr::OnTeleportFar(uint32 mapId, float x, float y, float z, float ori)
 {
     Map* newMap = sMapMgr->CreateBaseMap(mapId);
-    Creature* bot;
-    Position pos;
-    pos.Relocate(x, y, z, ori);
+    Position pos{ x, y, z, ori };
 
     for (BotMap::const_iterator itr = _bots.begin(); itr != _bots.end(); ++itr)
     {
-        bot = itr->second;
+        Creature* bot = itr->second;
 
         if (bot->IsTempBot())
             continue;
@@ -1659,10 +1662,7 @@ void BotMgr::_teleportBot(Creature* bot, Map* newMap, float x, float y, float z,
                 bot->RemoveFromWorld();
             }
 
-            ASSERT(bot->GetGUID());
-
             bot->RemoveAllGameObjects();
-
             bot->m_Events.KillAllEvents(false);
             bot->CombatStop();
             bot->ClearComboPoints();
@@ -1775,8 +1775,10 @@ void BotMgr::CleanupsBeforeBotDelete(ObjectGuid guid, uint8 removetype)
 
     ASSERT(bot->GetCreator() && bot->GetCreator()->GetGUID() == _owner->GetGUID());
 
-    RemoveBotFromBGQueue(bot);
-    if (removetype != BOT_REMOVE_LOGOUT)
+    if (!bot->IsTempBot())
+        RemoveBotFromBGQueue(bot);
+
+    if (removetype != BOT_REMOVE_LOGOUT || bot->GetBotAI()->HasSharedOwner(_owner->GetGUID().GetCounter()))
         RemoveBotFromGroup(bot);
 
     CleanupsBeforeBotDelete(bot);
@@ -1807,7 +1809,7 @@ void BotMgr::CleanupsBeforeBotDelete(Creature* bot)
     //bot->SetCreatorGUID(ObjectGuid::Empty);
 
     Map* map = bot->FindMap();
-    if (!map || map->IsDungeon())
+    if (!map || map->IsDungeon() || bot->IsTempBot())
         bot->RemoveFromWorld();
 }
 
@@ -1819,6 +1821,12 @@ void BotMgr::RemoveAllBots(uint8 removetype)
 //Bot is being abandoned by player
 void BotMgr::RemoveBot(ObjectGuid guid, uint8 removetype)
 {
+    BotMap::const_iterator itr = _bots.find(guid);
+    ASSERT(itr != _bots.end(), "Trying to remove bot which does not belong to this botmgr(a)!!");
+    //ASSERT(_owner->IsInWorld(), "Trying to remove bot while not in world(a)!!");
+
+    Creature* bot = itr->second;
+
     if (_update_lock)
     {
         _delayedRemoveList.emplace_back(guid, BotRemoveType(removetype));
@@ -1827,23 +1835,6 @@ void BotMgr::RemoveBot(ObjectGuid guid, uint8 removetype)
     else if (!_delayedRemoveList.empty())
         _delayedRemoveList.remove_if([=](decltype(_delayedRemoveList)::value_type const& p) { return p.first == guid; });
 
-    BotMap::const_iterator itr = _bots.find(guid);
-    ASSERT(itr != _bots.end(), "Trying to remove bot which does not belong to this botmgr(a)!!");
-    //ASSERT(_owner->IsInWorld(), "Trying to remove bot while not in world(a)!!");
-
-    //trying to remove temp bot second time means removing all bots
-    //just erase from bots because already cleaned up
-    for (std::list<ObjectGuid>::iterator it = _removeList.begin(); it != _removeList.end(); ++it)
-    {
-        if (*it == guid)
-        {
-            _removeList.erase(it);
-            _bots.erase(itr);
-            return;
-        }
-    }
-
-    Creature* bot = itr->second;
     CleanupsBeforeBotDelete(guid, removetype);
 
     if (_owner->GetSession()->PlayerLogout() && bot->IsInGrid() && bot->FindMap() && bot->FindMap()->GetEntry()->Instanceable())
@@ -1853,21 +1844,17 @@ void BotMgr::RemoveBot(ObjectGuid guid, uint8 removetype)
     //if (GetNpcBotsCount() <= 1 && !_owner->GetPetGUID() && _owner->m_Controlled.empty())
     //    _owner->SendRemoveControlBar();
 
-    if (bot->GetBotAI()->IsTempBot())
-    {
-        //bot->GetBotAI()->OnBotDespawn(bot); //send to self
-        _removeList.push_back(guid);
-        return;
-    }
-
     _bots.erase(itr);
+
+    if (bot->GetBotAI()->IsTempBot())
+        return;
 
     BotAIResetType resetType;
     switch (removetype)
     {
-        case BOT_REMOVE_DISMISS: case BOT_REMOVE_UNAFFORD: resetType = BOTAI_RESET_DISMISS; break;
-        case BOT_REMOVE_UNBIND:                            resetType = BOTAI_RESET_UNBIND;  break;
-        default:                                           resetType = BOTAI_RESET_LOGOUT;  break;
+        case BOT_REMOVE_DISMISS: case BOT_REMOVE_UNAFFORD: resetType = bot->GetBotAI()->IsSharedBot() ? BOTAI_RESET_UNBIND : BOTAI_RESET_DISMISS; break;
+        case BOT_REMOVE_UNBIND:                            resetType = BOTAI_RESET_UNBIND;                                                        break;
+        default:                                           resetType = BOTAI_RESET_LOGOUT;                                                        break;
     }
     bot->GetBotAI()->ResetBotAI(resetType);
 
@@ -1879,6 +1866,8 @@ void BotMgr::RemoveBot(ObjectGuid guid, uint8 removetype)
         BotDataMgr::ResetNpcBotTransmogData(bot->GetEntry(), false);
         uint32 newOwner = 0;
         BotDataMgr::UpdateNpcBotData(bot->GetEntry(), NPCBOT_UPDATE_OWNER, &newOwner);
+        NpcBotData::SharedOwnersContainer sharedOwners{};
+        BotDataMgr::UpdateNpcBotData(bot->GetEntry(), NPCBOT_UPDATE_SHARED_OWNERS, &sharedOwners);
     }
 }
 
@@ -1903,9 +1892,9 @@ BotAddResult BotMgr::AddBot(Creature* bot)
     ASSERT(bot->IsNPCBot());
     ASSERT(bot->GetBotAI() != nullptr);
 
-    bool owned = bot->GetBotAI()->IsTempBot() || bot->GetBotAI()->GetBotOwnerGuid() == _owner->GetGUID().GetCounter();
-    uint8 owned_count = BotDataMgr::GetOwnedBotsCount(_owner->GetGUID());
-    uint8 class_count = BotDataMgr::GetOwnedBotsCount(_owner->GetGUID(), bot->GetClassMask());
+    bool owned = bot->GetBotAI()->IsTempBot() || bot->GetBotAI()->HasOwner(_owner->GetGUID().GetCounter());
+    uint8 owned_count = BotDataMgr::GetOwnedBotsCount(_owner->GetGUID(), 0, true);
+    uint8 class_count = BotDataMgr::GetOwnedBotsCount(_owner->GetGUID(), bot->GetClassMask(), true);
 
     if (!_enableNpcBots)
     {
@@ -1993,12 +1982,13 @@ BotAddResult BotMgr::AddBot(Creature* bot)
 
     if (!bot->GetBotAI()->IsTempBot())
     {
+        uint32 newOwner = _owner->GetGUID().GetCounter();
+        if (!bot->GetBotAI()->HasSharedOwner(newOwner))
+            BotDataMgr::UpdateNpcBotData(bot->GetEntry(), NPCBOT_UPDATE_OWNER, &newOwner);
+
         bot->GetBotAI()->SetBotCommandState(BOT_COMMAND_FOLLOW, true);
         if (bot->GetBotAI()->HasRole(BOT_ROLE_PARTY))
             AddBotToGroup(bot);
-
-        uint32 newOwner = _owner->GetGUID().GetCounter();
-        BotDataMgr::UpdateNpcBotData(bot->GetEntry(), NPCBOT_UPDATE_OWNER, &newOwner);
     }
 
     return BOT_ADD_SUCCESS;
@@ -2089,12 +2079,7 @@ bool BotMgr::RemoveAllBotsFromGroup()
     return true;
 }
 
-uint32 BotMgr::GetNpcBotCostRent()
-{
-    return _npcBotsCostRent;
-}
-
-uint32 BotMgr::GetNpcBotCostHire(uint8 level, uint8 botclass)
+uint32 BotMgr::_normalizedCostForLevel(uint32 cost_base, uint8 bot_class, uint8 level)
 {
     //assuming default 1000000
     //level 1: 500  //5  silver
@@ -2105,13 +2090,13 @@ uint32 BotMgr::GetNpcBotCostHire(uint8 level, uint8 botclass)
     //rest is linear
     //rare / rareelite bots have their cost adjusted
     uint32 cost =
-        level < 10 ? _npcBotsCostHire / 2000 : //5 silver
-        level < 20 ? _npcBotsCostHire / 100 :  //1 gold
-        level < 30 ? _npcBotsCostHire / 20 :   //5 gold
-        level < 40 ? _npcBotsCostHire / 5 :    //20 gold
-        (_npcBotsCostHire * (level - (level % 10))) / DEFAULT_MAX_LEVEL; //50 - 100 gold
+        level < 10 ? cost_base / 2000 : //5 silver
+        level < 20 ? cost_base / 100 :  //1 gold
+        level < 30 ? cost_base / 20 :   //5 gold
+        level < 40 ? cost_base / 5 :    //20 gold
+        (cost_base * (level - (level % 10))) / DEFAULT_MAX_LEVEL; //50 - 100 gold
 
-    switch (botclass)
+    switch (bot_class)
     {
         case BOT_CLASS_BM:
         case BOT_CLASS_ARCHMAGE:
@@ -2133,6 +2118,16 @@ uint32 BotMgr::GetNpcBotCostHire(uint8 level, uint8 botclass)
     return cost;
 }
 
+uint32 BotMgr::GetNpcBotCostRent(uint8 level, uint8 botclass)
+{
+    return _normalizedCostForLevel(_npcBotsCostRent, botclass, level);
+}
+
+uint32 BotMgr::GetNpcBotCostHire(uint8 level, uint8 botclass)
+{
+    return _normalizedCostForLevel(_npcBotsCostHire, botclass, level);
+}
+
 std::string BotMgr::GetNpcBotCostStr(uint8 level, uint8 botclass)
 {
     std::ostringstream money;
@@ -2152,7 +2147,7 @@ std::string BotMgr::GetNpcBotCostStr(uint8 level, uint8 botclass)
             money << cost << " |TInterface\\Icons\\INV_Misc_Coin_05:8|t";
     }
 
-    if (uint32 rcost = GetNpcBotCostRent())
+    if (uint32 rcost = GetNpcBotCostRent(level, botclass))
     {
         uint32 gold = uint32(rcost / GOLD);
         rcost -= (gold * GOLD);
@@ -2396,7 +2391,7 @@ void BotMgr::RecallAllBots(bool teleport)
     {
         for (BotMap::const_iterator itr = _bots.begin(); itr != _bots.end(); ++itr)
             if (itr->second->IsInWorld() && itr->second->IsAlive() && !bot_ai::CCed(itr->second, true))
-                itr->second->GetMotionMaster()->MovePoint(_owner->GetMapId(), *_owner, false);
+                itr->second->GetMotionMaster()->MovePoint(_owner->GetMapId(), *_owner, FORCED_MOVEMENT_NONE, 0.0f, false);
     }
 }
 
@@ -2405,7 +2400,7 @@ void BotMgr::RecallBot(Creature* bot)
     ASSERT(GetBot(bot->GetGUID()));
 
     if (bot->IsInWorld() && bot->IsAlive() && !bot_ai::CCed(bot, true))
-        bot->GetMotionMaster()->MovePoint(_owner->GetMapId(), *_owner, false);
+        bot->GetMotionMaster()->MovePoint(_owner->GetMapId(), *_owner, FORCED_MOVEMENT_NONE, 0.0f, false);
 }
 
 void BotMgr::KillAllBots()

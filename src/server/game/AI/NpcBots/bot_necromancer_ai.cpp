@@ -66,14 +66,8 @@ enum NecromancerSpecial
     CE_MIN_TARGETS          = 3
 };
 
-static const uint32 Necromancer_spells_damage_arr[] =
-{ /*MAIN_ATTACK_1, */CORPSE_EXPLOSION_1/*, ATTRACT_1*/ };
-
-static const uint32 Necromancer_spells_support_arr[] =
-{ RAISE_DEAD_1, UNHOLY_FRENZY_1, CRIPPLE_1/*, ATTRACT_1*/ };
-
-static const std::vector<uint32> Necromancer_spells_damage(FROM_ARRAY(Necromancer_spells_damage_arr));
-static const std::vector<uint32> Necromancer_spells_support(FROM_ARRAY(Necromancer_spells_support_arr));
+static const std::vector<uint32> Necromancer_spells_damage{ /*MAIN_ATTACK_1, */CORPSE_EXPLOSION_1/*, ATTRACT_1*/ };
+static const std::vector<uint32> Necromancer_spells_support{ RAISE_DEAD_1, UNHOLY_FRENZY_1, CRIPPLE_1/*, ATTRACT_1*/ };
 
 class necromancer_bot : public CreatureScript
 {
@@ -172,7 +166,7 @@ public:
                 };
                 Creature* creature = nullptr;
                 Bcore::CreatureLastSearcher searcher(me, creature, corpse_pred);
-                Cell::VisitAllObjects(me, searcher, ceinfo->RangeEntry->RangeMax[0]);
+                Cell::VisitObjects(me, searcher, ceinfo->RangeEntry->RangeMax[0]);
 
                 if (creature)
                 {
@@ -192,7 +186,7 @@ public:
                         std::list<Unit*> units;
                         NearbyHostileUnitCheck check(me, ceradius, this, 0, c);
                         Bcore::UnitListSearcher searcher(c, units, check);
-                        Cell::VisitAllObjects(c, searcher, ceradius);
+                        Cell::VisitObjects(c, searcher, ceradius);
                         if (units.size() > maxmob)
                         {
                             maxmob = units.size();
@@ -204,7 +198,7 @@ public:
                 };
                 std::list<Creature*> corpses;
                 Bcore::CreatureListSearcher searcher(me, corpses, corpse_pred);
-                Cell::VisitAllObjects(me, searcher, ceinfo->RangeEntry->RangeMax[0]);
+                Cell::VisitObjects(me, searcher, ceinfo->RangeEntry->RangeMax[0]);
 
                 if (Creature* corpse = corpses.empty() ? nullptr : corpses.size() == 1 ? corpses.front() :
                     Bcore::Containers::SelectRandomContainerElement(corpses))
@@ -220,7 +214,7 @@ public:
 
         void CheckRaiseDead(uint32 diff)
         {
-            if (!IsSpellReady(RAISE_DEAD_1, diff) || _raiseDeadCheckTimer > diff || _minions.size() > MAX_MINIONS - 2 ||
+            if (!IsSpellReady(RAISE_DEAD_1, diff) || _raiseDeadCheckTimer > diff || _minions.size() + 2 > MAX_MINIONS ||
                 me->GetPower(POWER_MANA) < RAISE_DEAD_COST || Rand() > 50)
                 return;
 
@@ -236,7 +230,7 @@ public:
             };
             Creature* creature = nullptr;
             Bcore::CreatureLastSearcher searcher(me, creature, corpse_pred);
-            Cell::VisitAllObjects(me, searcher, 25.f);
+            Cell::VisitObjects(me, searcher, 25.f);
 
             if (creature)
             {
@@ -548,9 +542,9 @@ public:
             OnSpellHit(caster, spell);
         }
 
-        void DamageDealt(Unit* victim, uint32& damage, DamageEffectType damageType) override
+        void DamageDealt(Unit* victim, uint32& damage, DamageEffectType damageType, SpellSchoolMask damageSchoolMask) override
         {
-            bot_ai::DamageDealt(victim, damage, damageType);
+            bot_ai::DamageDealt(victim, damage, damageType, damageSchoolMask);
         }
 
         void DamageTaken(Unit* u, uint32& /*damage*/, DamageEffectType /*damageType*/, SpellSchoolMask /*schoolMask*/) override

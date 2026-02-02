@@ -98,6 +98,7 @@ bot_pet_ai::bot_pet_ai(Creature* creature) : CreatureAI(creature)
     _updateTimerMedium = 0;
     _updateTimerEx1 = urand(12000, 15000);
     checkAurasTimer = 0;
+    shouldUpdateStats = false;
 
     _wanderer = false;
 
@@ -106,6 +107,8 @@ bot_pet_ai::bot_pet_ai(Creature* creature) : CreatureAI(creature)
     myType = 0;
     petOwner = nullptr;
     canUpdate = true;
+
+    opponent = nullptr;
 }
 bot_pet_ai::~bot_pet_ai()
 {
@@ -234,7 +237,7 @@ void bot_pet_ai::SetBotCommandState(uint32 st, bool force, Position* newpos)
                 else if (pdist > 10.0f)
                     speed = baserunspeed * 1.25f;
             }
-            me->GetMotionMaster()->Add(new PointMovementGenerator<Creature>(1, movepos.m_positionX, movepos.m_positionY, movepos.m_positionZ, speed, 0.f, nullptr, true));
+            me->GetMotionMaster()->Add(new PointMovementGenerator<Creature>(1, movepos.m_positionX, movepos.m_positionY, movepos.m_positionZ, FORCED_MOVEMENT_NONE, speed, 0.f, nullptr, true));
         }
         RemoveBotCommandState(BOT_COMMAND_STAY | BOT_COMMAND_FULLSTOP | BOT_COMMAND_ATTACK | BOT_COMMAND_COMBATRESET);
     }
@@ -888,7 +891,7 @@ void bot_pet_ai::SetPetStats(bool force)
         default:
             break;
     }
-    me->SetModifierValue(UNIT_MOD_ATTACK_POWER, BASE_VALUE, atpower);
+    me->SetStatFlatModifier(UNIT_MOD_ATTACK_POWER, BASE_VALUE, atpower);
     me->UpdateAttackPowerAndDamage();
     //armor
     myarmor = std::max<uint32>(myarmor, level*50);
@@ -917,7 +920,7 @@ void bot_pet_ai::SetPetStats(bool force)
     {
         myarmor /= 3;
     }
-    me->SetModifierValue(UNIT_MOD_ARMOR, BASE_VALUE, float(myarmor));
+    me->SetStatFlatModifier(UNIT_MOD_ARMOR, BASE_VALUE, float(myarmor));
     me->UpdateArmor();
     //resistances
     for (uint8 i = SPELL_SCHOOL_HOLY; i != MAX_SPELL_SCHOOL; ++i)
@@ -939,7 +942,7 @@ void bot_pet_ai::SetPetStats(bool force)
                 petResist = (petOwner->GetBotAI()->GetBotResistanceBonus(SpellSchools(i)) + petOwner->GetResistance(SpellSchools(i)))*0.4f;
                 break;
         }
-        me->SetModifierValue(UnitMods(UNIT_MOD_RESISTANCE_START + i), BASE_VALUE, petResist);
+        me->SetStatFlatModifier(UnitMods(UNIT_MOD_RESISTANCE_START + i), BASE_VALUE, petResist);
         me->UpdateResistances(i);
     }
     //crit physical
@@ -1321,7 +1324,7 @@ void bot_pet_ai::SetPetStats(bool force)
     //BOT_LOG_ERROR("entities.player", "SetPetStat(): hp stamval %.1f, stammult %.1f, base %u, total %.2f", stamValue, stamMult, botPet->GetCreateHealth(), m_totalhp);
     bool fullhp = me->GetHealth() == me->GetMaxHealth();
     float pct = fullhp ? 100.f : me->GetHealthPct(); // needs for regeneration
-    me->SetModifierValue(UNIT_MOD_HEALTH, BASE_VALUE, m_totalhp);
+    me->SetStatFlatModifier(UNIT_MOD_HEALTH, BASE_VALUE, m_totalhp);
     me->UpdateMaxHealth();
     me->SetHealth(fullhp ? me->GetMaxHealth() : uint32(0.5f + float(me->GetMaxHealth()) * pct / 100.f)); //restore pct
     //mana
@@ -1352,7 +1355,7 @@ void bot_pet_ai::SetPetStats(bool force)
         //BOT_LOG_ERROR("entities.player", "SetPetStat(): mana intValue %.1f, intMult %.1f, base %u, total %.2f", intValue, intMult, botPet->GetCreatePowerValue(POWER_MANA), m_totalmana);
         bool fullmana = me->GetPower(POWER_MANA) == me->GetMaxPower(POWER_MANA);
         pct = fullmana ? 100.f : (float(me->GetPower(POWER_MANA)) * 100.f) / float(me->GetMaxPower(POWER_MANA));
-        me->SetModifierValue(UNIT_MOD_MANA, BASE_VALUE, m_totalmana);
+        me->SetStatFlatModifier(UNIT_MOD_MANA, BASE_VALUE, m_totalmana);
         me->UpdateMaxPower(POWER_MANA);
         me->SetPower(POWER_MANA, fullmana ? me->GetMaxPower(POWER_MANA) :
             uint32(0.5f + float(me->GetMaxPower(POWER_MANA)) * pct / 100.f)); //restore pct
@@ -1539,7 +1542,7 @@ Unit* bot_pet_ai::_getTarget(bool &reset) const
         foldist = std::max<float>(foldist, spelldist + 4.f);
     }
     bool dropTarget = false;
-    if (!dropTarget && mytar)
+    if (mytar)
     {
         dropTarget = IAmFree() ?
             petOwner->GetDistance(mytar) > foldist :
@@ -2249,7 +2252,7 @@ void bot_pet_ai::AttackStart(Unit* /*u*/)
 {
 }
 
-void bot_pet_ai::DamageDealt(Unit* victim, uint32& damage, DamageEffectType /*damageType*/)
+void bot_pet_ai::DamageDealt(Unit* victim, uint32& damage, DamageEffectType /*damageType*/, SpellSchoolMask /*damageSchoolMask*/)
 {
     if (victim == me)
         return;
@@ -2326,11 +2329,9 @@ void bot_pet_ai::OnBotPetSpellGo(Spell const* spell, bool ok)
 
 void bot_pet_ai::OnBotPetSpellInterrupted(SpellSchoolMask schoolMask, uint32 unTimeMs)
 {
-    SpellInfo const* info;
-
     for (BotPetSpellMap::iterator itr = _spells.begin(); itr != _spells.end(); ++itr)
     {
-        info = sSpellMgr->GetSpellInfo(itr->second->spellId);
+        SpellInfo const* info = sSpellMgr->GetSpellInfo(itr->second->spellId);
         if (!info || !(info->GetSchoolMask() & schoolMask)) continue;
         if (info->IsCooldownStartedOnEvent()) continue;
         if (info->PreventionType != SPELL_PREVENTION_TYPE_SILENCE) continue;
@@ -2383,10 +2384,9 @@ bool bot_pet_ai::GlobalUpdate(uint32 diff)
     //Check current cast state: interrupt casts that became pointless
     if (me->HasUnitState(UNIT_STATE_CASTING) && urand(1,100) <= 75)
     {
-        bool interrupt;
         for (uint8 i = CURRENT_FIRST_NON_MELEE_SPELL; i != CURRENT_AUTOREPEAT_SPELL; ++i)
         {
-            interrupt = false;
+            bool interrupt = false;
             Spell* spell = me->GetCurrentSpell(CurrentSpellTypes(i));
             if (!spell)
                 continue;
